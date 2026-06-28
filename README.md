@@ -1,9 +1,11 @@
 # VideoVault
 
-**Videoverwaltungs- und Archivierungsplattform**  
+**Videoverwaltungs und Archivierungsplattform, von Blink-Überwachungskameras und importiert deren Aufzeichnungen automatisch**  
 Ubuntu 24.04 · Multi-Arch: `amd64` + `arm64` (Raspberry Pi 5)
 
 VideoVault ist eine selbst gehostete Plattform zur Verwaltung, Archivierung und Wiedergabe von Videoaufnahmen. Das kombinierte Docker-Image enthält Frontend (nginx) und Backend (Node.js) in einem Container. Optionale Blink-Kameraintegration, NAS-Synchronisation und Live-Stream-Unterstützung sind eingebaut.
+
+Das System verbindet sich mit Blink-Überwachungskameras und importiert deren Aufzeichnungen automatisch. Zusätzlich können Videos manuell hochgeladen werden. Alle Aufnahmen werden nach Jahr/Monat/Tag archiviert und sind über eine übersichtliche Weboberfläche abrufbar.
 
 ---
 
