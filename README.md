@@ -1,3 +1,7 @@
+<img width="1664" height="986" alt="4" src="https://github.com/user-attachments/assets/99fe1174-37b4-4215-9767-b4f57da7c55a" />
+<img width="1660" height="1172" alt="3" src="https://github.com/user-attachments/assets/04f96ea2-eb3e-4b05-8f95-31490dbfd308" />
+<img width="1670" height="901" alt="2" src="https://github.com/user-attachments/assets/88fecc6a-5bcb-40fd-9a41-de2cf122e460" />
+<img width="1679" height="779" alt="1" src="https://github.com/user-attachments/assets/696ac6dc-0758-4dac-a9ca-e675210324d2" />
 # VideoVault
 
 **Videoverwaltungs und Archivierungsplattform, von Blink-Überwachungskameras und importiert deren Aufzeichnungen automatisch**  
