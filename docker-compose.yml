@@ -1,0 +1,151 @@
+# =============================================================================
+#  VideoVault  -  Videoverwaltungs- und Archivierungsplattform
+#  Ubuntu 24.04 | Multi-Arch: amd64 + arm64 (Raspberry Pi 5)
+#
+#  Ein kombiniertes Image "videovault" enthaelt Frontend (nginx) und
+#  Backend (Node.js) im selben Container.  nginx (Port 80) leitet /api/
+#  intern an Node.js (Port 8080, nicht nach aussen) weiter.
+#
+#  ---------------------------------------------------------------------------
+#  PERSISTENTE DATEN – Zwei Betriebsmodi (ueber .env steuerbar):
+#
+#  Modus A – benannte Docker-Volumes (Standard, empfohlen):
+#    MEDIA_VOLUME=media_data        →  docker volume create  (automatisch)
+#    THUMB_VOLUME=thumb_data
+#    TRASH_VOLUME=trash_data
+#    CONFIG_VOLUME=config_data
+#
+#  Modus B – Host-Verzeichnisse (Bind Mounts):
+#    MEDIA_VOLUME=/mnt/nas/videovault/media
+#    THUMB_VOLUME=/opt/videovault/thumbnails
+#    TRASH_VOLUME=/opt/videovault/trash
+#    CONFIG_VOLUME=/opt/videovault/config
+#
+#  Beide Modi werden von Docker Compose automatisch unterschieden:
+#  Beginnt der Wert mit "/" → Bind Mount; sonst → benanntes Volume.
+#  Wichtig: Bei Bind Mounts muessen die Host-Verzeichnisse existieren.
+#  ---------------------------------------------------------------------------
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  #  PostgreSQL  (Ubuntu 24.04 + postgresql-16)
+  # ---------------------------------------------------------------------------
+  db:
+    image: codxio/video_vault:postgres-ubuntu
+    container_name: Video-Vault-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-videovault}
+      POSTGRES_USER:     ${DB_USER:-videovault}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-videovault} -d ${DB_NAME:-videovault}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - video_vault
+
+  # ---------------------------------------------------------------------------
+  #  VideoVault – kombiniertes Image (Frontend + Backend)
+  #  nginx (Port 80) liefert das Frontend aus und proxied /api/ → Node.js
+  #  intern (localhost:8080). Nur Port 80 ist nach aussen sichtbar.
+  # ---------------------------------------------------------------------------
+  videovault:
+    image: codxio/video_vault:latest
+    container_name: Video-Vault
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8088}:80"
+    environment:
+      NODE_ENV:              production
+      PORT:                  8080
+      DB_HOST:               db
+      DB_PORT:               5432
+      DB_NAME:               ${DB_NAME:-videovault}
+      DB_USER:               ${DB_USER:-videovault}
+      DB_PASSWORD:           ${DB_PASSWORD:-changeme}
+      JWT_SECRET:            ${JWT_SECRET:-please-change-this-secret}
+      JWT_EXPIRES:           ${JWT_EXPIRES:-12h}
+      # Schluessel zum Verschluesseln der Blink-Zugangsdaten (AES-256-GCM).
+      # Leer = Rueckfall auf JWT_SECRET.
+      BLINK_ENC_KEY:         ${BLINK_ENC_KEY:-}
+      ADMIN_USER:            ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD:        ${ADMIN_PASSWORD:?ADMIN_PASSWORD muss in .env gesetzt sein}
+      ADMIN_PASSWORD_RESET:  ${ADMIN_PASSWORD_RESET:-false}
+      # Aufbewahrung
+      RETENTION_DAYS:        ${RETENTION_DAYS:-90}
+      RETENTION_CRON:        ${RETENTION_CRON:-0 3 * * *}
+      TRASH_RETENTION_DAYS:  ${TRASH_RETENTION_DAYS:-14}
+      # Synchronisation
+      SYNC_ENABLED:          ${SYNC_ENABLED:-false}
+      SYNC_CRON:             ${SYNC_CRON:-0 4 * * *}
+      SYNC_TARGET:           /sync
+      # Speicher
+      STORAGE_WARN_PERCENT:  ${STORAGE_WARN_PERCENT:-90}
+      MAX_UPLOAD_MB:         ${MAX_UPLOAD_MB:-5120}
+      # NAS / Freigaben
+      NAS_MOUNT_BASE:        /nas
+      SHARE_CONFIG_PATH:     /config
+    volumes:
+      # -----------------------------------------------------------------------
+      #  Daten-Volumes – Standard: benannte Docker-Volumes (Modus A)
+      #  Fuer Host-Verzeichnisse (Bind Mounts, Modus B) absolute Pfade in .env:
+      #    MEDIA_VOLUME=/absoluter/pfad/media
+      #  Docker unterscheidet automatisch: "/" am Anfang = Bind Mount.
+      #
+      #  Bind-Mount-Verzeichnisse werden automatisch angelegt:
+      #  - Durch install.sh / install-rpi.sh vor dem ersten Start.
+      #  - Durch den Container-Entrypoint beim Start (mkdir -p).
+      #  Ein manuelles Anlegen ist NICHT erforderlich.
+      # -----------------------------------------------------------------------
+      - ${MEDIA_VOLUME:-media_data}:/data/media
+      - ${THUMB_VOLUME:-thumb_data}:/data/thumbnails
+      - ${TRASH_VOLUME:-trash_data}:/data/trash
+      - ${CONFIG_VOLUME:-config_data}:/config
+      - ${SYNC_HDD_PATH:-./sync_target}:/sync
+    # Berechtigungen fuer NAS-Mounts (SMB/NFS/WebDAV).
+    # Wer keine NAS-Anbindung nutzt, kann cap_add/devices/security_opt entfernen.
+    cap_add:
+      - SYS_ADMIN
+      - DAC_READ_SEARCH
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    # Externer DNS-Server: stellt sicher, dass der Container oeffentliche
+    # Hostnamen (z.B. Blink-API-Endpunkte) zuverlaessig aufloest.
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
+    networks:
+      - video_vault
+
+
+# =============================================================================
+#  Benannte Volumes (werden nur dann als Docker-Volumes angelegt, wenn die
+#  entsprechende *_VOLUME-Variable in .env NICHT auf einen absoluten Pfad
+#  gesetzt ist – andernfalls verwendet Docker Compose den Host-Pfad direkt).
+# =============================================================================
+volumes:
+  db_data:
+  media_data:
+  thumb_data:
+  trash_data:
+  config_data:
+
+networks:
+  video_vault:
+    name: video_vault
+    driver: bridge
+    # Kein "internal: true" – Container benoetigen Internetzugang (Blink-API,
+    # Python-Pakete beim Build). DNS explizit im videovault-Service konfiguriert.
